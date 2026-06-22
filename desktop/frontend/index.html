@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mokio</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">Mokio</span>
+        <span class="tagline">one-click dev toolchain bootstrap</span>
+      </div>
+      <div class="topbar-actions">
+        <span id="summary" class="summary">—</span>
+        <button id="selectAll" class="btn ghost">Select all</button>
+        <button id="selectNone" class="btn ghost">Clear</button>
+        <button id="refresh" class="btn ghost">Re-detect</button>
+        <button id="install" class="btn primary">Install selected</button>
+      </div>
+    </header>
+
+    <div class="progress-wrap" id="progressWrap" hidden>
+      <div class="progress-bar"><div id="progressFill" class="progress-fill"></div></div>
+      <span id="progressLabel" class="progress-label"></span>
+    </div>
+
+    <main class="content">
+      <section id="cards" class="cards"></section>
+    </main>
+
+    <section class="log-panel">
+      <div class="log-head">
+        <span>Log</span>
+        <button id="clearLog" class="btn ghost tiny">clear</button>
+      </div>
+      <div id="log" class="log"></div>
+    </section>
+
+    <footer class="footer">
+      Selections auto-include prerequisites. The terminal suite writes managed blocks into <code>~/.zshrc</code>.
+    </footer>
+
+    <script src="main.js"></script>
+  </body>
+</html>

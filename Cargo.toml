@@ -1,0 +1,32 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/tui", "desktop"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "MIT"
+authors = ["woodq"]
+repository = "https://github.com/woodq/MokioToolsPackage"
+homepage = "https://github.com/woodq/MokioToolsPackage"
+description = "One-click bootstrap for a complete dev toolchain on macOS (VSCode, Git, Chrome, Ghostty+Yazi+Oh-My-Zsh, Codex, Claude Code, cc-switch, Node, uv) — TUI + desktop."
+keywords = ["tui", "desktop", "installer", "bootstrap", "macos"]
+categories = ["development-tools", "command-line-utilities"]
+
+[workspace.dependencies]
+mokio-core = { path = "crates/core" }
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "5"
+include_dir = "0.7"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
