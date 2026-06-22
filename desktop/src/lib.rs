@@ -1,10 +1,13 @@
-//! Tauri 2 back-end. Thin shell over `mokio-core`: it exposes two commands
-//! (`list_tools`, `install_tools`) and bridges the core `Emitter` stream to the
-//! webview via Tauri events.
+//! Tauri 2 back-end. Thin shell over `mokio-core`: it exposes a handful of
+//! commands and bridges the core `Emitter` stream to the webview via Tauri
+//! events. UI language (Chinese by default) is toggled from the front-end and
+//! drives localized tool names / category labels / chrome strings.
 
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use mokio_core::event::{Emitter as CoreEmitter, Event};
+use mokio_core::i18n::{self, Lang};
 use mokio_core::installer::Status;
 use mokio_core::{Catalog, ToolInfo};
 use serde::Serialize;
@@ -71,41 +74,82 @@ impl CoreEmitter for TauriEmitter {
 struct ToolEntry {
     info: ToolInfo,
     status: Status,
+    category_label: String,
 }
 
-/// One entry per tool, with live detection.
+/// One entry per tool, localised to `lang`, with live detection.
 #[tauri::command]
-fn list_tools() -> Vec<ToolEntry> {
+fn list_tools(lang: Lang) -> Vec<ToolEntry> {
     let catalog = Catalog::new();
     catalog
-        .infos()
+        .localized_infos(lang)
         .into_iter()
         .map(|info| {
+            let category_label = i18n::category_label(lang, info.category).to_string();
             let status = catalog
                 .get(&info.id)
                 .map(|i| i.detect())
                 .unwrap_or_default();
-            ToolEntry { info, status }
+            ToolEntry { info, status, category_label }
         })
         .collect()
 }
 
-/// Re-run detection for a single tool (used by the refresh button).
+/// All UI chrome strings for `lang`, as a key→string map the front-end looks up.
 #[tauri::command]
-fn detect_tool(id: String) -> Status {
-    let catalog = Catalog::new();
-    catalog
-        .get(&id)
-        .map(|i| i.detect())
-        .unwrap_or_default()
+fn ui_strings(lang: Lang) -> HashMap<String, String> {
+    const KEYS: &[&str] = &[
+        "tagline",
+        "panel_log",
+        "btn_install",
+        "btn_installing",
+        "btn_select_all",
+        "btn_clear",
+        "btn_redetect",
+        "btn_log_clear",
+        "summary",
+        "footer_desktop",
+        "log_all_ok",
+        "log_failed",
+        "log_install_plan",
+        "log_redetect",
+        "needs",
+        "homepage",
+        "foundation_label",
+        "st_installed_v",
+        "st_installed",
+        "st_not_installed",
+        "st_unknown",
+    ];
+    KEYS.iter()
+        .map(|k| ((*k).to_string(), i18n::ui(lang, k).to_string()))
+        .collect()
 }
 
-struct InstallState {
-    busy: Mutex<bool>,
+struct LangState {
+    lang: Mutex<Lang>,
+}
+
+#[tauri::command]
+fn current_lang(state: State<'_, LangState>) -> Lang {
+    *state.lang.lock().expect("lang lock")
+}
+
+#[tauri::command]
+fn cycle_lang(state: State<'_, LangState>) -> Lang {
+    let mut lang = state.lang.lock().expect("lang lock");
+    *lang = lang.toggle();
+    *lang
+}
+
+#[tauri::command]
+fn set_lang(lang: Lang, state: State<'_, LangState>) -> Lang {
+    let mut current = state.lang.lock().expect("lang lock");
+    *current = lang;
+    *current
 }
 
 /// Kick off installs on a background thread; events stream back over the bus.
-/// Returns immediately so the UI can render progress.
 #[tauri::command]
 fn install_tools(
     ids: Vec<String>,
@@ -181,10 +225,23 @@ fn open_url(url: String) -> Result<(), String> {
     Ok(())
 }
 
+struct InstallState {
+    busy: Mutex<bool>,
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .manage(LangState { lang: Mutex::new(Lang::default()) })
         .manage(InstallState { busy: Mutex::new(false) })
-        .invoke_handler(tauri::generate_handler![list_tools, detect_tool, install_tools, open_url])
+        .invoke_handler(tauri::generate_handler![
+            list_tools,
+            ui_strings,
+            current_lang,
+            cycle_lang,
+            set_lang,
+            install_tools,
+            open_url
+        ])
         .run(tauri::generate_context!())
         .expect("error while running mokio-desktop");
 }

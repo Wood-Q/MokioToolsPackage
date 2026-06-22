@@ -6,6 +6,7 @@ use std::thread;
 
 use mokio_core::catalog::Catalog;
 use mokio_core::event::{Emitter, Event};
+use mokio_core::i18n::{self, Lang};
 use mokio_core::installer::{Status, ToolInfo};
 
 const LOG_CAP: usize = 2000;
@@ -56,12 +57,15 @@ pub struct App {
     pub done_count: usize,
     pub total_count: usize,
     pub last_error: Option<String>,
+    pub lang: Lang,
+    pub log_height: u16,
 }
 
 impl App {
     pub fn new() -> Self {
         let catalog = Catalog::new();
-        let infos = catalog.infos();
+        let lang = Lang::default();
+        let infos = catalog.localized_infos(lang);
 
         let mut statuses = HashMap::new();
         for info in &infos {
@@ -89,7 +93,40 @@ impl App {
             done_count: 0,
             total_count: 0,
             last_error: None,
+            lang,
+            log_height: 14,
         }
+    }
+
+    pub fn toggle_lang(&mut self) {
+        self.lang = self.lang.toggle();
+        self.infos = self.catalog.localized_infos(self.lang);
+    }
+
+    pub fn set_lang(&mut self, lang: Lang) {
+        if lang != self.lang {
+            self.lang = lang;
+            self.infos = self.catalog.localized_infos(self.lang);
+        }
+    }
+
+    /// Grow / shrink the log panel (keyboard `]` / `[`).
+    pub fn grow_log(&mut self) {
+        self.log_height = self.log_height.saturating_add(3);
+    }
+    pub fn shrink_log(&mut self) {
+        self.log_height = self.log_height.saturating_sub(3).max(6);
+    }
+
+    /// Resize the log panel so its top border sits at `row` (mouse drag).
+    /// `term_height` is the full terminal height in rows. Final clamping to fit
+    /// the screen happens at draw time.
+    pub fn drag_log_to(&mut self, row: u16, term_height: u16) {
+        if term_height <= row + 1 {
+            return;
+        }
+        let h = term_height.saturating_sub(row).saturating_sub(1);
+        self.log_height = h.max(6);
     }
 
     pub fn cursor_info(&self) -> Option<&ToolInfo> {
@@ -142,7 +179,7 @@ impl App {
                 self.statuses.insert(info.id.clone(), inst.detect());
             }
         }
-        self.push_log(Level::Info, "Re-ran detection for all tools.");
+        self.push_log(Level::Info, i18n::ui(self.lang, "log_redetect"));
     }
 
     pub fn push_log(&mut self, level: Level, text: impl Into<String>) {
@@ -184,7 +221,9 @@ impl App {
         self.last_error = None;
         self.push_log(
             Level::Phase,
-            format!("Installing {} tool(s): {}", ordered.len(), ordered.join(", ")),
+            i18n::ui(self.lang, "log_install_plan")
+                .replace("{n}", &ordered.len().to_string())
+                .replace("{list}", &ordered.join(", ")),
         );
 
         let catalog = Catalog::new();

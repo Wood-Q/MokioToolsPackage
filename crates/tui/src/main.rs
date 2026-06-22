@@ -1,8 +1,10 @@
 //! mokio — one-click dev toolchain bootstrap.
 //!
-//! * `mokio`           → interactive TUI (default)
-//! * `mokio list`      → print detected status of every tool and exit
-//! * `mokio install [ids...]` → non-interactive install (all tools, or the given ids)
+//! * `mokio`                    → interactive TUI (default, Chinese)
+//! * `mokio list`               → print detected status of every tool and exit
+//! * `mokio install [ids...]`   → non-interactive install (all tools, or given ids)
+//!
+//! Pass `--lang en` (or `-L en`) anywhere to switch to English; `--lang zh` for 中文.
 
 mod app;
 mod ui;
@@ -12,7 +14,10 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 
 use crossterm::cursor::Hide;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEvent, KeyEventKind,
+    KeyModifiers, MouseEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -21,49 +26,76 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
 use mokio_core::event::{Emitter, Event as CoreEvent};
-use mokio_core::Catalog;
+use mokio_core::i18n;
+use mokio_core::{Catalog, Lang};
 
 use crate::app::{App, Level, TuiMsg};
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    // Pull a `--lang`/`-L` flag out of the arg list (anywhere), default 中文.
+    let raw: Vec<String> = std::env::args().skip(1).collect();
+    let mut lang = Lang::default();
+    let mut args: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < raw.len() {
+        match raw[i].as_str() {
+            "--lang" | "-L" => {
+                if i + 1 < raw.len() {
+                    lang = Lang::from_str(&raw[i + 1]);
+                    i += 2;
+                    continue;
+                }
+            }
+            s if s.starts_with("--lang=") => {
+                lang = Lang::from_str(&s["--lang=".len()..]);
+                i += 1;
+                continue;
+            }
+            _ => {}
+        }
+        args.push(raw[i].clone());
+        i += 1;
+    }
+
     let code = match args.as_slice() {
-        [] => run_tui().map(|_| 0).unwrap_or_else(|e| {
+        [] => run_tui(lang).map(|_| 0).unwrap_or_else(|e| {
             eprintln!("error: {e}");
             1
         }),
-        [cmd, rest @ ..] if cmd == "list" || cmd == "ls" => run_list(rest).map(|_| 0).unwrap_or_else(|e| {
-            eprintln!("error: {e}");
-            1
-        }),
+        [cmd, rest @ ..] if cmd == "list" || cmd == "ls" => {
+            run_list(lang, rest).map(|_| 0).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                1
+            })
+        }
         [cmd, rest @ ..] if cmd == "install" || cmd == "i" => {
-            run_install(rest).map(|_| 0).unwrap_or_else(|e| {
+            run_install(lang, rest).map(|_| 0).unwrap_or_else(|e| {
                 eprintln!("error: {e}");
                 1
             })
         }
         [cmd, ..] if cmd == "-h" || cmd == "--help" || cmd == "help" => {
-            print_help();
+            print_help(lang);
             0
         }
         _ => {
-            eprintln!("unknown command. try: mokio help");
+            eprintln!("{}", i18n::ui(lang, "unknown_command"));
             2
         }
     };
     std::process::exit(code);
 }
 
-fn print_help() {
-    println!("mokio — one-click dev toolchain bootstrap\n");
+fn print_help(lang: Lang) {
+    println!("{}", i18n::ui(lang, "usage"));
     println!("USAGE:");
-    println!("    mokio                 Interactive TUI (default)");
-    println!("    mokio list            Print detected status of every tool");
-    println!("    mokio install [ids]   Install everything, or just the listed tool ids");
+    println!("{}", i18n::ui(lang, "cli_tui"));
+    println!("{}", i18n::ui(lang, "cli_list"));
+    println!("{}", i18n::ui(lang, "cli_install"));
     println!();
-    println!("TOOL IDS:");
+    println!("{}  (-L zh | -L en)", i18n::ui(lang, "tool_ids_header"));
     let catalog = Catalog::new();
-    for info in catalog.infos() {
+    for info in catalog.localized_infos(lang) {
         println!("    {:<12} {}", info.id, info.name);
     }
 }
@@ -72,27 +104,33 @@ fn print_help() {
 // `mokio list`
 // ---------------------------------------------------------------------------
 
-fn run_list(_rest: &[String]) -> io::Result<()> {
+fn run_list(lang: Lang, _rest: &[String]) -> io::Result<()> {
     let catalog = Catalog::new();
     println!(
         "{:<4} {:<12} {:<22} {}",
-        "", "ID", "NAME", "STATUS"
+        "",
+        i18n::ui(lang, "list_id"),
+        i18n::ui(lang, "list_name"),
+        i18n::ui(lang, "list_status")
     );
-    for info in catalog.infos() {
+    for info in catalog.localized_infos(lang) {
         let status = catalog.get(&info.id).map(|i| i.detect()).unwrap_or_default();
-        let (glyph, detail) = fmt_status(&status);
+        let (glyph, detail) = fmt_status(lang, &status);
         println!("{glyph:<4} {:<12} {:<22} {detail}", info.id, info.name);
     }
     Ok(())
 }
 
-fn fmt_status(status: &mokio_core::Status) -> (&'static str, String) {
+fn fmt_status(lang: Lang, status: &mokio_core::Status) -> (&'static str, String) {
     use mokio_core::Status;
     match status {
-        Status::Installed { version: Some(v) } => ("✓", format!("installed ({v})")),
-        Status::Installed { version: None } => ("✓", "installed".to_string()),
-        Status::NotInstalled => ("○", "not installed".to_string()),
-        Status::Unknown => ("·", "unknown".to_string()),
+        Status::Installed { version: Some(v) } => (
+            "✓",
+            i18n::ui(lang, "st_installed_v").replace("{v}", v),
+        ),
+        Status::Installed { version: None } => ("✓", i18n::ui(lang, "st_installed").to_string()),
+        Status::NotInstalled => ("○", i18n::ui(lang, "st_not_installed").to_string()),
+        Status::Unknown => ("·", i18n::ui(lang, "st_unknown").to_string()),
     }
 }
 
@@ -114,7 +152,7 @@ impl Emitter for StdEmitter {
     }
 }
 
-fn run_install(ids: &[String]) -> io::Result<()> {
+fn run_install(lang: Lang, ids: &[String]) -> io::Result<()> {
     let catalog = Catalog::new();
     let requested: Vec<String> = if ids.is_empty() {
         catalog.infos().iter().map(|i| i.id.clone()).collect()
@@ -145,9 +183,12 @@ fn run_install(ids: &[String]) -> io::Result<()> {
 
     println!();
     if failed.is_empty() {
-        println!("✅ All tools installed successfully.");
+        println!("{}", i18n::ui(lang, "install_all_ok"));
     } else {
-        eprintln!("⚠ Finished with failures: {}", failed.join(", "));
+        eprintln!(
+            "{}",
+            i18n::ui(lang, "install_failed").replace("{list}", &failed.join(", "))
+        );
     }
     Ok(())
 }
@@ -156,7 +197,7 @@ fn run_install(ids: &[String]) -> io::Result<()> {
 // `mokio` (TUI)
 // ---------------------------------------------------------------------------
 
-fn run_tui() -> Result<(), io::Error> {
+fn run_tui(lang: Lang) -> Result<(), io::Error> {
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         let _ = restore_terminal();
@@ -165,20 +206,15 @@ fn run_tui() -> Result<(), io::Error> {
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, Hide)?;
+    execute!(stdout, EnterAlternateScreen, Hide, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     let (tx, rx) = channel::<TuiMsg>();
     let mut app = App::new();
-    app.push_log(
-        Level::Info,
-        "Welcome to Mokio. Space toggles tools, 'i' installs them.",
-    );
-    app.push_log(
-        Level::Info,
-        "Selections auto-include prerequisites (e.g. Codex pulls in Node).",
-    );
+    app.set_lang(lang);
+    app.push_log(Level::Info, i18n::ui(app.lang, "log_welcome"));
+    app.push_log(Level::Info, i18n::ui(app.lang, "log_tips"));
 
     let result = run_tui_loop(&mut terminal, &mut app, &tx, &rx);
     restore_terminal()?;
@@ -195,13 +231,26 @@ fn run_tui_loop(
         terminal.draw(|f| ui::draw(f, app))?;
 
         if event::poll(Duration::from_millis(60))? {
-            if let Event::Key(key) = event::read()? {
-                if should_quit(&key) {
-                    return Ok(());
+            match event::read()? {
+                Event::Key(key) => {
+                    if should_quit(&key) {
+                        return Ok(());
+                    }
+                    if !app.running {
+                        handle_key(app, tx, &key);
+                    }
                 }
-                if !app.running {
-                    handle_key(app, tx, &key);
+                Event::Mouse(m) => {
+                    // Grabbing / dragging the log panel's top border resizes it.
+                    if matches!(m.kind, MouseEventKind::Down(_) | MouseEventKind::Drag(_)) {
+                        let h = terminal.size()?.height;
+                        let divider = h.saturating_sub(app.log_height).saturating_sub(1);
+                        if (m.row as i32 - divider as i32).abs() <= 1 {
+                            app.drag_log_to(m.row, h);
+                        }
+                    }
                 }
+                _ => {}
             }
         }
 
@@ -209,7 +258,10 @@ fn run_tui_loop(
             match msg {
                 TuiMsg::Start(id) => {
                     app.current = Some(id.clone());
-                    app.push_log(Level::Phase, format!("starting {id}"));
+                    app.push_log(
+                        Level::Phase,
+                        i18n::ui(app.lang, "log_starting").replace("{id}", &id),
+                    );
                 }
                 TuiMsg::Event(e) => app.handle_event(&e),
                 TuiMsg::DoneOne { id, ok } => {
@@ -218,7 +270,10 @@ fn run_tui_loop(
                         if let Some(inst) = app.catalog.get(&id) {
                             app.statuses.insert(id.clone(), inst.detect());
                         }
-                        app.push_log(Level::Info, format!("✓ done: {id}"));
+                        app.push_log(
+                            Level::Info,
+                            i18n::ui(app.lang, "log_done").replace("{id}", &id),
+                        );
                     }
                     app.current = None;
                 }
@@ -232,15 +287,13 @@ fn run_tui_loop(
                         }
                     }
                     if failed.is_empty() {
-                        app.push_log(Level::Info, "✅ All selected tools installed successfully.");
+                        app.push_log(Level::Info, i18n::ui(app.lang, "log_all_ok"));
                     } else {
                         app.push_log(
                             Level::Warn,
-                            format!(
-                                "Finished with {} failure(s): {}",
-                                failed.len(),
-                                failed.join(", ")
-                            ),
+                            i18n::ui(app.lang, "log_failed")
+                                .replace("{n}", &failed.len().to_string())
+                                .replace("{list}", &failed.join(", ")),
                         );
                     }
                 }
@@ -261,6 +314,9 @@ fn handle_key(app: &mut App, tx: &std::sync::mpsc::Sender<TuiMsg>, key: &KeyEven
         KeyCode::Char('a') => app.select_all(true),
         KeyCode::Char('n') => app.select_all(false),
         KeyCode::Char('r') => app.redetect(),
+        KeyCode::Char('l') => app.toggle_lang(),
+        KeyCode::Char(']') => app.grow_log(),
+        KeyCode::Char('[') => app.shrink_log(),
         _ => {}
     }
 }
@@ -275,6 +331,6 @@ fn should_quit(key: &KeyEvent) -> bool {
 
 fn restore_terminal() -> Result<(), io::Error> {
     disable_raw_mode()?;
-    execute!(io::stdout(), LeaveAlternateScreen)?;
+    execute!(io::stdout(), DisableMouseCapture, LeaveAlternateScreen)?;
     Ok(())
 }

@@ -166,6 +166,34 @@ body {
   height: 180px;
   flex-shrink: 0;
 }
+
+/* Resizer handle between content and log */
+.resizer {
+  height: 7px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: #0b0e13;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  transition: background .12s;
+}
+.resizer::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 46px;
+  height: 3px;
+  border-radius: 99px;
+  background: #3a424f;
+  transition: background .12s;
+}
+.resizer:hover { background: #161b22; }
+.resizer:hover::after { background: var(--accent); }
+body.dragging { cursor: row-resize !important; user-select: none !important; }
+body.dragging * { cursor: row-resize !important; }
 .log-head {
   display: flex; justify-content: space-between; align-items: center;
   padding: 6px 14px;

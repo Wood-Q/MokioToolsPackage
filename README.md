@@ -86,8 +86,8 @@ Output appears under `desktop/target/release/bundle/`.
 ```
 
 Keys: `↑/↓` move · `Space` toggle · `i` install · `a` all · `n` none · `r`
-re-detect · `q` quit. Selecting a tool auto-includes its prerequisites (e.g.
-Codex pulls in Node).
+re-detect · **`l` switch 中文 / English** · `q` quit. Selecting a tool
+auto-includes its prerequisites (e.g. Codex pulls in Node).
 
 ### Non-interactive
 
@@ -96,6 +96,18 @@ mokio list                       # print detected status of every tool
 mokio install                    # install everything
 mokio install node uv claude-code   # install a subset (prerequisites auto-added)
 ```
+
+### Language
+
+The UI defaults to **中文**. Switch it:
+
+- **TUI** — press `l`.
+- **Desktop** — the `EN` / `中文` button in the top bar.
+- **CLI** — pass `--lang en` (or `-L en`) anywhere: `mokio list --lang en`.
+
+Translations live in one shared module, [`crates/core/src/i18n.rs`](crates/core/src/i18n.rs).
+
+
 
 ### Desktop
 

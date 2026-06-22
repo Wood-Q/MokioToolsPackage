@@ -1,5 +1,6 @@
 //! The registry of all installers and selection/ordering helpers.
 
+use crate::i18n::{self, Lang};
 use crate::installer::{Installer, ToolInfo};
 use crate::tools::*;
 
@@ -38,6 +39,18 @@ impl Catalog {
     pub fn infos(&self) -> Vec<ToolInfo> {
         let mut v: Vec<ToolInfo> = self.installers.iter().map(|i| i.info()).collect();
         v.sort_by_key(|i| i.order);
+        v
+    }
+
+    /// Same as [`Catalog::infos`] but with `name` / `description` translated to
+    /// `lang`. The structural fields (id, order, requires, …) are unchanged so
+    /// dependency resolution stays language-independent.
+    pub fn localized_infos(&self, lang: Lang) -> Vec<ToolInfo> {
+        let mut v = self.infos();
+        for info in &mut v {
+            info.name = i18n::tool_name(lang, &info.id).to_string();
+            info.description = i18n::tool_desc(lang, &info.id).to_string();
+        }
         v
     }
 

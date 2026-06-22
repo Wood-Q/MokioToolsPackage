@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,14 +10,15 @@
     <header class="topbar">
       <div class="brand">
         <span class="logo">Mokio</span>
-        <span class="tagline">one-click dev toolchain bootstrap</span>
+        <span id="tagline" class="tagline">一键配置 macOS 开发工具链</span>
       </div>
       <div class="topbar-actions">
         <span id="summary" class="summary">—</span>
-        <button id="selectAll" class="btn ghost">Select all</button>
-        <button id="selectNone" class="btn ghost">Clear</button>
-        <button id="refresh" class="btn ghost">Re-detect</button>
-        <button id="install" class="btn primary">Install selected</button>
+        <button id="langBtn" class="btn ghost" title="切换语言 / Switch language">EN</button>
+        <button id="selectAll" class="btn ghost">全选</button>
+        <button id="selectNone" class="btn ghost">清空</button>
+        <button id="refresh" class="btn ghost">重新检测</button>
+        <button id="install" class="btn primary">安装所选</button>
       </div>
     </header>
 
@@ -30,16 +31,18 @@
       <section id="cards" class="cards"></section>
     </main>
 
+    <div id="resizer" class="resizer" title="拖动调整日志大小 / drag to resize"></div>
+
     <section class="log-panel">
       <div class="log-head">
-        <span>Log</span>
-        <button id="clearLog" class="btn ghost tiny">clear</button>
+        <span id="logHead">日志</span>
+        <button id="clearLog" class="btn ghost tiny">清空</button>
       </div>
       <div id="log" class="log"></div>
     </section>
 
-    <footer class="footer">
-      Selections auto-include prerequisites. The terminal suite writes managed blocks into <code>~/.zshrc</code>.
+    <footer id="footerNote" class="footer">
+      所选工具会自动带上依赖。终端套件会在 ~/.zshrc 写入受管理的片段。
     </footer>
 
     <script src="main.js"></script>
