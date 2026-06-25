@@ -1,5 +1,5 @@
-//! Node.js via nvm — matches the developer's existing setup (the same `nvm`
-//! loader block is written to ~/.zshrc by the terminal installer).
+//! Node.js + npm via nvm — installs nvm, Node.js LTS (which bundles npm),
+//! and verifies that `npm` is available on PATH.
 
 use crate::detect;
 use crate::event::Emitter;
@@ -22,8 +22,8 @@ impl Installer for Node {
     fn info(&self) -> ToolInfo {
         ToolInfo {
             id: ID.to_string(),
-            name: "Node.js (nvm)".to_string(),
-            description: "Node.js LTS managed by nvm, the Node Version Manager. Replicates your current ~/.nvm setup.".to_string(),
+            name: "Node.js + npm (nvm)".to_string(),
+            description: "Node.js LTS (with npm) managed by nvm, the Node Version Manager. Replicates your current ~/.nvm setup.".to_string(),
             category: Category::Runtime,
             homepage: "https://nodejs.org".to_string(),
             order: 20,
@@ -63,8 +63,18 @@ impl Installer for Node {
 
         emit.phase("Installing Node.js LTS via nvm");
         // nvm is a shell function; it must be sourced before use.
+        // `nvm install --lts` installs the latest LTS and its bundled npm.
         let script = r#". "$HOME/.nvm/nvm.sh" && nvm install --lts && nvm alias default 'lts/*' && nvm use default"#;
         shell::run_sh(emit, script)?;
+
+        // Verify npm is available alongside node.
+        emit.phase("Verifying npm");
+        let verify = r#". "$HOME/.nvm/nvm.sh" && npm --version"#;
+        match shell::run_sh(emit, verify) {
+            Ok(()) => emit.info("npm is available."),
+            Err(e) => emit.warn(format!("npm verification failed ({e}). Node.js LTS bundles npm — try opening a new terminal and running `npm --version`.")),
+        }
+
         Ok(InstallOutcome::Installed)
     }
 }

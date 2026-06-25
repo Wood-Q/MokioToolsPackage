@@ -19,13 +19,17 @@ image_quality = 75
 
 [opener]
 edit = [
-  { run = 'code %s', desc = "VSCode", for = "unix" },
+  { run = 'code %s', desc = "VSCode", for = "macos", orphan = true },
+  { run = 'code %s', desc = "VSCode", for = "linux", orphan = true },
+  { run = '${EDITOR:-vi} %s', desc = "$EDITOR", for = "unix", block = true },
 ]
 open = [
   { run = 'open %s', desc = "Open", for = "macos" },
+  { run = "xdg-open %s1", desc = "Open", for = "linux" },
 ]
 reveal = [
-  { run = 'open -R %1', desc = "Reveal in Finder", for = "macos" },
+  { run = 'open -R %s1', desc = "Reveal in Finder", for = "macos" },
+  { run = 'xdg-open %d1', desc = "Reveal", for = "linux" },
 ]
 
 [open]

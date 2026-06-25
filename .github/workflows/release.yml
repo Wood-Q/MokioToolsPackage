@@ -1,0 +1,139 @@
+# Release workflow — builds the Tauri desktop app and publishes a GitHub Release
+# with macOS DMG artifact. Supports optional Apple code signing / notarization
+# when the corresponding secrets are configured.
+#
+# ── Quick start (no Apple Developer account) ──────────────────────────
+#   1. Push a tag like `v0.1.0` to trigger this workflow.
+#   2. The app will be ad-hoc signed (signingIdentity "-").
+#      Users who get "app is damaged" must run:
+#        xattr -cr /Applications/Mokio.app
+#   3. The release notes include this instruction automatically.
+#
+# ── With an Apple Developer account ───────────────────────────────────
+#   Configure these repository secrets:
+#     APPLE_CERTIFICATE          — base64-encoded .p12 export
+#     APPLE_CERTIFICATE_PASSWORD — password used when exporting the .p12
+#     APPLE_API_ISSUER           — App Store Connect API issuer ID
+#     APPLE_API_KEY              — App Store Connect API key ID
+#     APPLE_API_KEY_PATH         — Path to the .p8 private key file
+#   When these are present the build is properly signed + notarized and
+#   users won't see any Gatekeeper warnings.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.1.0). Defaults to the current tag or 'dev'."
+        required: false
+        type: string
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: Build & Release macOS
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    env:
+      # If APPLE_CERTIFICATE is set, Tauri picks it up for codesigning.
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      # Notarization (optional — needs Apple Developer account)
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_PATH: ${{ secrets.APPLE_API_KEY_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # ── Apple code signing (optional) ──────────────────────────────────
+      # If the APPLE_CERTIFICATE secret is configured, import it into a
+      # temporary keychain so that Tauri's bundler can sign the .app.
+      # If the secret is absent the build falls back to ad-hoc signing
+      # (signingIdentity "-") which is configured in tauri.conf.json.
+      - name: Import Apple Developer Certificate
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          rm -f certificate.p12
+
+      - name: Verify signing identity
+        if: env.APPLE_CERTIFICATE != ''
+        run: |
+          CERT_INFO=$(security find-identity -v -p codesigning build.keychain | head -1)
+          CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+          echo "Signing identity: $CERT_ID"
+
+      # ── Build ──────────────────────────────────────────────────────────
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli
+
+      - name: Build Tauri app
+        env:
+          # Use the verified identity if available, otherwise fall back to
+          # the ad-hoc identity ("-") configured in tauri.conf.json.
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || '-' }}
+        run: cargo tauri build --bundles app,dmg
+
+      # ── Release ────────────────────────────────────────────────────────
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "value=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=dev-$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.value }}
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            1. Download `Mokio.dmg` from the assets below.
+            2. Open the DMG and drag **Mokio** to the Applications folder.
+            3. If macOS shows an "app is damaged and can't be opened" error, open **Terminal** and run:
+               ```
+               xattr -cr /Applications/Mokio.app
+               ```
+               Then open the app again. This is needed because the app is not
+               notarized with an Apple Developer certificate.
+
+            > **Tip:** You can also right-click the app and choose **Open** the first time.
+          files: |
+            target/release/bundle/dmg/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

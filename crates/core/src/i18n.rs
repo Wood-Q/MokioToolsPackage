@@ -197,7 +197,7 @@ pub fn tool_name(lang: Lang, id: &str) -> &'static str {
     let pair: (&str, &str) = match id {
         "homebrew" => ("Homebrew", "Homebrew"),
         "git" => ("Git", "Git"),
-        "node" => ("Node.js (nvm)", "Node.js (nvm)"),
+        "node" => ("Node.js + npm（nvm）", "Node.js + npm (nvm)"),
         "uv" => ("uv", "uv"),
         "vscode" => ("Visual Studio Code", "Visual Studio Code"),
         "chrome" => ("Google Chrome", "Google Chrome"),
@@ -225,8 +225,8 @@ pub fn tool_desc(lang: Lang, id: &str) -> &'static str {
             "Distributed version control. Installs the Homebrew formula and ensures the Xcode Command Line Tools are present.",
         ),
         "node" => (
-            "通过 nvm 管理的 Node.js LTS，复刻你现有的 ~/.nvm 环境。",
-            "Node.js LTS managed by nvm, the Node Version Manager. Replicates your current ~/.nvm setup.",
+            "通过 nvm 管理的 Node.js LTS（含 npm），复刻你现有的 ~/.nvm 环境。",
+            "Node.js LTS (with npm) managed by nvm, the Node Version Manager. Replicates your current ~/.nvm setup.",
         ),
         "uv" => (
             "极速的 Python 包安装器 / 解析器（Astral 出品）。",
